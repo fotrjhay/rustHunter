@@ -109,7 +109,7 @@ impl BrowserService {
                 .await;
 
             info!("clicking vacancy apply/respond button");
-            if let Err(err) = click_first_available(
+            if let Err(err) = click_first_interactable(
                 &driver,
                 &[
                     Locator::Css("[data-qa='vacancy-response-link-top']"),
@@ -151,11 +151,11 @@ impl BrowserService {
             }
 
             if let Some(resume_id) = resume_id {
-                self.select_resume_if_available(&driver, resume_id).await?;
+                self.select_resume_if_available(&driver, resume_id).await;
             }
 
             self.fill_cover_letter_if_available(&driver, cover_letter)
-                .await?;
+                .await;
 
             self.capture_debug_screenshot(&driver, "apply_ready_for_review.png")
                 .await;
@@ -704,12 +704,8 @@ impl BrowserService {
         Err(AppError::Timeout)
     }
 
-    async fn fill_cover_letter_if_available(
-        &self,
-        driver: &WebDriver,
-        cover_letter: &str,
-    ) -> Result<(), AppError> {
-        match find_first_available(
+    async fn fill_cover_letter_if_available(&self, driver: &WebDriver, cover_letter: &str) {
+        match find_first_interactable(
             driver,
             &[
                 Locator::Css("[data-qa='vacancy-response-popup-form-letter-input']"),
@@ -718,31 +714,48 @@ impl BrowserService {
                 Locator::Css("textarea"),
             ],
         )
-        .await?
+        .await
         {
-            Some(textarea) => {
+            Ok(Some(textarea)) => {
                 info!("filling cover letter textarea");
                 if let Err(err) = textarea.clear().await {
                     debug!(error = %err, "failed to clear cover letter textarea before typing");
                 }
-                textarea
-                    .send_keys(cover_letter)
-                    .await
-                    .map_err(|err| AppError::Browser(err.to_string()))?;
-                Ok(())
+                match textarea.send_keys(cover_letter).await {
+                    Ok(()) => {}
+                    Err(err) if is_non_interactable_webdriver_error(&err) => {
+                        warn!(
+                            error = %err,
+                            "cover letter textarea was not interactable; continuing manual review without auto-fill"
+                        );
+                    }
+                    Err(err) => {
+                        warn!(
+                            error = %err,
+                            "failed to type cover letter; continuing manual review without auto-fill"
+                        );
+                    }
+                }
             }
-            None => {
+            Ok(None) => {
                 info!("cover letter textarea not available; continuing without filling one");
-                Ok(())
+            }
+            Err(err) if is_manual_browser_close_error(&err) => {
+                info!(
+                    error = %err,
+                    "browser closed while filling cover letter; treating as manual review completion"
+                );
+            }
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    "failed to inspect cover letter textarea; continuing manual review without auto-fill"
+                );
             }
         }
     }
 
-    async fn select_resume_if_available(
-        &self,
-        driver: &WebDriver,
-        resume_id: &str,
-    ) -> Result<(), AppError> {
+    async fn select_resume_if_available(&self, driver: &WebDriver, resume_id: &str) {
         let resume_id_predicate = xpath_literal(resume_id);
         let locators = vec![
             Locator::CssOwned(format!("input[value='{resume_id}']")),
@@ -753,20 +766,45 @@ impl BrowserService {
             Locator::XPathOwned(format!("//*[contains(@data-qa, {resume_id_predicate})]")),
         ];
 
-        match find_first_available(driver, &locators).await? {
-            Some(element) => {
+        match find_first_interactable(driver, &locators).await {
+            Ok(Some(element)) => {
                 info!(resume_id, "selecting requested resume");
-                element
-                    .click()
-                    .await
-                    .map_err(|err| AppError::Browser(err.to_string()))
+                match element.click().await {
+                    Ok(()) => {}
+                    Err(err) if is_non_interactable_webdriver_error(&err) => {
+                        warn!(
+                            resume_id,
+                            error = %err,
+                            "requested resume control was not interactable; continuing with current/default resume"
+                        );
+                    }
+                    Err(err) => {
+                        warn!(
+                            resume_id,
+                            error = %err,
+                            "failed to select requested resume; continuing with current/default resume"
+                        );
+                    }
+                }
             }
-            None => {
+            Ok(None) => {
                 info!(
                     resume_id,
                     "requested resume selector not found; continuing with default resume"
                 );
-                Ok(())
+            }
+            Err(err) if is_manual_browser_close_error(&err) => {
+                info!(
+                    error = %err,
+                    "browser closed while selecting resume; treating as manual review completion"
+                );
+            }
+            Err(err) => {
+                warn!(
+                    resume_id,
+                    error = %err,
+                    "failed to inspect requested resume controls; continuing with current/default resume"
+                );
             }
         }
     }
@@ -835,25 +873,84 @@ async fn find_first_available<'a>(
     Ok(None)
 }
 
-async fn click_first_available<'a>(
+async fn find_first_interactable<'a>(
+    driver: &WebDriver,
+    locators: &'a [Locator<'a>],
+) -> Result<Option<WebElement>, AppError> {
+    for locator in locators {
+        let elements = driver
+            .find_all(locator.by())
+            .await
+            .map_err(|err| AppError::Browser(err.to_string()))?;
+
+        for element in elements {
+            if !is_visible_and_enabled(&element).await? {
+                continue;
+            }
+
+            if let Err(err) = element.scroll_into_view().await {
+                debug!(error = %err, "failed to scroll matched element into view");
+            }
+
+            return Ok(Some(element));
+        }
+    }
+
+    Ok(None)
+}
+
+async fn click_first_interactable<'a>(
     driver: &WebDriver,
     locators: &'a [Locator<'a>],
 ) -> Result<(), String> {
     for locator in locators {
-        match driver.find(locator.by()).await {
-            Ok(element) => match element.click().await {
-                Ok(()) => return Ok(()),
+        let elements = driver
+            .find_all(locator.by())
+            .await
+            .map_err(|err| err.to_string())?;
+
+        for element in elements {
+            match is_visible_and_enabled(&element).await {
+                Ok(true) => {}
+                Ok(false) => continue,
                 Err(err) => {
+                    debug!(error = %err, "failed to inspect matched element");
+                    continue;
+                }
+            }
+
+            if let Err(err) = element.scroll_into_view().await {
+                debug!(error = %err, "failed to scroll matched element into view before click");
+            }
+
+            match element.click().await {
+                Ok(()) => return Ok(()),
+                Err(err) if is_non_interactable_webdriver_error(&err) => {
                     debug!(error = %err, "matched element could not be clicked");
                     continue;
                 }
-            },
-            Err(err) if matches!(err.as_inner(), WebDriverErrorInner::NoSuchElement(_)) => continue,
-            Err(err) => return Err(err.to_string()),
+                Err(err) => return Err(err.to_string()),
+            }
         }
     }
 
-    Err("no available apply/submit button matched known selectors".to_owned())
+    Err("no visible enabled apply/submit button matched known selectors".to_owned())
+}
+
+async fn is_visible_and_enabled(element: &WebElement) -> Result<bool, AppError> {
+    let displayed = element
+        .is_displayed()
+        .await
+        .map_err(|err| AppError::Browser(err.to_string()))?;
+
+    if !displayed {
+        return Ok(false);
+    }
+
+    element
+        .is_enabled()
+        .await
+        .map_err(|err| AppError::Browser(err.to_string()))
 }
 
 async fn has_any_locator<'a>(
@@ -996,6 +1093,15 @@ fn is_manual_browser_close_error(err: &AppError) -> bool {
         || message.contains("target window already closed")
         || message.contains("web view not found")
         || message.contains("disconnected")
+}
+
+fn is_non_interactable_webdriver_error(err: &WebDriverError) -> bool {
+    let message = err.to_string().to_ascii_lowercase();
+    message.contains("element not interactable")
+        || message.contains("element click intercepted")
+        || message.contains("element is not clickable")
+        || message.contains("other element would receive the click")
+        || message.contains("not reachable by keyboard")
 }
 
 async fn any_displayed_css(driver: &WebDriver, selectors: &[&str]) -> Result<bool, AppError> {
