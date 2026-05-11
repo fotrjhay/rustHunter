@@ -1,0 +1,238 @@
+{
+  "name": "rustHunter.Apply",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -432,
+        176
+      ],
+      "id": "manual-trigger",
+      "name": "When clicking Execute workflow"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name",
+          "cachedResultName": "Sheet1"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -224,
+        176
+      ],
+      "id": "get-sheet-rows",
+      "name": "Get row(s) in sheet"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "status-ready-condition",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "=ready",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        32,
+        176
+      ],
+      "id": "filter-ready",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        272,
+        176
+      ],
+      "id": "loop-over-items",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "url",
+              "stringValue": "={{ $json.url }}"
+            },
+            {
+              "name": "cover_letter",
+              "stringValue": "={{ $json.cover_letter }}"
+            },
+            {
+              "name": "resume_id",
+              "stringValue": "={{ $json.resume_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-apply-data",
+      "name": "Prepare Apply Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        496,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:3000/apply",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"vacancy_url\": \"{{ $json.url }}\",\n  \"cover_letter\": \"{{ $json.cover_letter }}\",\n  \"resume_id\": \"{{ $json.resume_id }}\"\n}",
+        "options": {}
+      },
+      "id": "apply-to-vacancy",
+      "name": "Apply to Vacancy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        688,
+        192
+      ],
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        912,
+        192
+      ],
+      "id": "wait-between-applications",
+      "name": "Wait"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking Execute workflow": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Prepare Apply Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Apply Data": {
+      "main": [
+        [
+          {
+            "node": "Apply to Vacancy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply to Vacancy": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "timezone": "Africa/Lagos",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": -1
+  },
+  "tags": []
+}

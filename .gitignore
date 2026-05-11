@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+
+target/
+
+browser_profile/
+browser_profile_api/
+
+captcha_debug.png
+apply_*.png
+*.log
+server.*.log
+
+.DS_Store
+Thumbs.db
