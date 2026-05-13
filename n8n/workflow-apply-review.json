@@ -119,7 +119,7 @@
         "url": "http://127.0.0.1:3000/apply",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"vacancy_url\": \"{{ $json.url }}\",\n  \"cover_letter\": \"{{ $json.cover_letter }}\",\n  \"resume_id\": \"{{ $json.resume_id }}\"\n}",
+        "jsonBody": "{\n  \"vacancy_url\": \"={{ $json.url }}\",\n  \"cover_letter\": \"={{ $json.cover_letter }}\",\n  \"resume_id\": \"={{ $json.resume_id }}\"\n}",
         "options": {}
       },
       "id": "apply-to-vacancy",

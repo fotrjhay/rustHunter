@@ -24,6 +24,18 @@ Apply uses:
 POST http://127.0.0.1:3000/apply
 ```
 
+Use valid JSON with expressions as field values:
+
+```json
+{
+  "vacancy_url": "={{ $json.url }}",
+  "cover_letter": "={{ $json.cover_letter }}",
+  "resume_id": "={{ $json.resume_id }}"
+}
+```
+
+Do not build the body as `={ "cover_letter": "{{ $json.cover_letter }}" }`. Cover letters often contain quotes or line breaks, and raw interpolation can produce invalid JSON before the request reaches the backend.
+
 The apply workflow is intentionally manual-review-first. The backend opens HH.ru in Chrome, prepares the response, and waits for you to close the browser window before returning.
 
 ## Safety

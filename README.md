@@ -204,9 +204,9 @@ Method: POST
 URL: http://127.0.0.1:3000/apply
 Body JSON:
 {
-  "vacancy_url": "{{ $json.url }}",
-  "cover_letter": "{{ $json.cover_letter }}",
-  "resume_id": "{{ $json.resume_id }}"
+  "vacancy_url": "={{ $json.url }}",
+  "cover_letter": "={{ $json.cover_letter }}",
+  "resume_id": "={{ $json.resume_id }}"
 }
 ```
 
